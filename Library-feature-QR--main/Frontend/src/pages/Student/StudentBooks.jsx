@@ -1,4 +1,4 @@
-// [file name]: StudentBooks.jsx - UPDATED (WITH FINE SYSTEM)
+// [file name]: StudentBooks.jsx - UPDATED (WITH FINE SYSTEM & FIXED DATES)
 import React, { useState, useEffect } from "react";
 import API from "../../api/api";
 import toast from "react-hot-toast";
@@ -207,11 +207,12 @@ export default function StudentBooks() {
                                                 <h4 className="font-medium text-gray-900">{issue.bookId.title}</h4>
                                                 <p className="text-sm text-gray-600">by {issue.bookId.author}</p>
                                                 <div className="flex items-center space-x-4 mt-2">
+                                                    {/* FIXED: Date display with Indian format */}
                                                     <span className="text-sm text-gray-500">
-                                                        Issued: {new Date(issue.issueDate).toLocaleDateString()}
+                                                        Issued: {new Date(issue.issueDate).toLocaleDateString('en-IN')}
                                                     </span>
                                                     <span className={`text-sm ${fineInfo.isOverdue ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                                                        Due: {new Date(issue.dueDate).toLocaleDateString()}
+                                                        Due: {new Date(issue.dueDate).toLocaleDateString('en-IN')}
                                                     </span>
                                                     {getStatusBadge(issue)}
                                                 </div>
@@ -276,8 +277,9 @@ export default function StudentBooks() {
                                     <tbody className="divide-y divide-gray-200">
                                         {allTransactions.map((transaction) => (
                                             <tr key={transaction._id}>
+                                                {/* FIXED: Date display with Indian format */}
                                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                                    {new Date(transaction.issueDate).toLocaleDateString()}
+                                                    {new Date(transaction.issueDate).toLocaleDateString('en-IN')}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="text-sm font-medium text-gray-900">

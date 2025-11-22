@@ -25,16 +25,11 @@ const TransactionSchema = new mongoose.Schema({
   },
   issueDate: {
     type: Date,
-    default: Date.now,
+    required: true, // Make it required
   },
   dueDate: {
     type: Date,
-    default: function () {
-      // 14 days from issue date
-      const due = new Date();
-      due.setDate(due.getDate() + 14);
-      return due;
-    },
+    required: true, // Make it required
   },
   returnDate: {
     type: Date,

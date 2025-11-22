@@ -1,8 +1,9 @@
-// [file name]: transactionController.js - UPDATED (WITH FINE SYSTEM)
+// [file name]: transactionController.js - UPDATED (FIXED DATE HANDLING)
 /**
  * Transaction Controller with Fine System
  * ------------------------------------------
  * Handles book issue and return operations with fines for overdue books.
+ * FIXED: Date handling for issue and due dates
  */
 
 import Transaction from "../models/Transaction.js";
@@ -68,9 +69,10 @@ const issueBook = async (req, res, next) => {
       });
     }
 
-    // Calculate due date (14 days from now)
+    // FIXED: Set proper dates
+    const issueDate = new Date(); // Today's date
     const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 14);
+    dueDate.setDate(issueDate.getDate() + 14); // 14 days from today
 
     // Create transaction and update book in parallel
     const [transaction] = await Promise.all([
@@ -78,7 +80,8 @@ const issueBook = async (req, res, next) => {
         studentId,
         bookId,
         type: "issue",
-        dueDate,
+        issueDate: issueDate, // Set today's date
+        dueDate: dueDate, // Set due date 14 days from today
         status: "active",
       }).save(),
       Book.findByIdAndUpdate(
@@ -97,7 +100,8 @@ const issueBook = async (req, res, next) => {
     res.status(201).json({
       message: "Book issued successfully",
       transaction,
-      dueDate: dueDate.toISOString().split("T")[0],
+      issueDate: issueDate.toISOString().split("T")[0], // Return formatted date
+      dueDate: dueDate.toISOString().split("T")[0], // Return formatted date
       availableCopies: book.availableCopies - 1,
     });
   } catch (error) {
@@ -156,7 +160,7 @@ const returnBook = async (req, res, next) => {
     }
 
     // Calculate fine if overdue
-    const returnDate = new Date();
+    const returnDate = new Date(); // Today's return date
     const dueDate = new Date(activeIssue.dueDate);
     let fineAmount = 0;
     let daysOverdue = 0;
@@ -173,7 +177,9 @@ const returnBook = async (req, res, next) => {
         studentId,
         bookId,
         type: "return",
-        returnDate: returnDate,
+        issueDate: activeIssue.issueDate, // Keep original issue date
+        dueDate: activeIssue.dueDate, // Keep original due date
+        returnDate: returnDate, // Set today's return date
         status: "returned",
         fineAmount: fineAmount,
         daysOverdue: daysOverdue,
@@ -200,6 +206,7 @@ const returnBook = async (req, res, next) => {
       message: "Book returned successfully",
       transaction: returnTransaction,
       availableCopies: book.availableCopies + 1,
+      returnDate: returnDate.toISOString().split("T")[0], // Return formatted return date
     };
 
     // Add fine information if applicable
