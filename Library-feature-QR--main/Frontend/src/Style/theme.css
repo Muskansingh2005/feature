@@ -1,0 +1,8 @@
+/* theme.css */
+/* You can override default theme variables or add custom utility classes */
+:root {
+    --color-primary: #0ea5e9;
+    /* sky-500 */
+    --color-primary-dark: #0284c7;
+    /* sky-600 */
+}
