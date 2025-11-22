@@ -1,4 +1,4 @@
-// [file name]: QRBookScanner.jsx - ENHANCED WITH BETTER ERROR HANDLING
+// [file name]: QRBookScanner.jsx - UPDATED (NO AUTH)
 import React, { useState, useEffect } from "react";
 import API from "../../api/api";
 import toast from "react-hot-toast";
@@ -7,34 +7,45 @@ export default function QRBookScanner() {
     const [scannedBookId, setScannedBookId] = useState("");
     const [bookDetails, setBookDetails] = useState(null);
     const [showModal, setShowModal] = useState(false);
-    const [studentId, setStudentId] = useState("");
-    const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(false);
     const [books, setBooks] = useState([]);
+    const [studentId, setStudentId] = useState("");
+    const [students, setStudents] = useState([]);
 
-    // Fetch students and books on component mount
+    // Fetch books and students on component mount
     useEffect(() => {
-        fetchData();
+        fetchBooks();
+        fetchStudents();
     }, []);
 
-    const fetchData = async () => {
+    const fetchBooks = async () => {
         try {
-            const [studentsRes, booksRes] = await Promise.all([
-                API.get("/students"),
-                API.get("/books")
-            ]);
-            setStudents(studentsRes.data);
+            const booksRes = await API.get("/books");
             setBooks(booksRes.data);
+        } catch (error) {
+            console.error("Failed to load books:", error);
+            toast.error("Failed to load books data");
+        }
+    };
+
+    const fetchStudents = async () => {
+        try {
+            const studentsRes = await API.get("/students");
+            setStudents(studentsRes.data);
             if (studentsRes.data[0]) setStudentId(studentsRes.data[0]._id);
         } catch (error) {
-            console.error("Failed to load data:", error);
-            toast.error("Failed to load students and books data");
+            toast.error("Failed to load students");
         }
     };
 
     const handleQRScan = async (bookId) => {
         if (!bookId.trim()) {
             toast.error("Please enter a Book ID");
+            return;
+        }
+
+        if (!studentId) {
+            toast.error("Please select a student first");
             return;
         }
 
@@ -72,14 +83,9 @@ export default function QRBookScanner() {
     };
 
     const handleIssueBook = async () => {
-        if (!studentId) {
-            toast.error("Please select a student");
-            return;
-        }
-
         try {
             const res = await API.post("/transactions/issue", {
-                studentId,
+                studentId: studentId,
                 bookId: scannedBookId,
             });
 
@@ -89,7 +95,7 @@ export default function QRBookScanner() {
             setBookDetails(null);
 
             // Refresh books list to update availability
-            await fetchData();
+            await fetchBooks();
         } catch (error) {
             console.error("Issue book error:", error);
             toast.error(error.response?.data?.message || "Failed to issue book");
@@ -97,14 +103,9 @@ export default function QRBookScanner() {
     };
 
     const handleReturnBook = async () => {
-        if (!studentId) {
-            toast.error("Please select a student");
-            return;
-        }
-
         try {
             const res = await API.post("/transactions/return", {
-                studentId,
+                studentId: studentId,
                 bookId: scannedBookId,
             });
 
@@ -114,7 +115,7 @@ export default function QRBookScanner() {
             setBookDetails(null);
 
             // Refresh books list to update availability
-            await fetchData();
+            await fetchBooks();
         } catch (error) {
             console.error("Return book error:", error);
             toast.error(error.response?.data?.message || "Failed to return book");
@@ -139,30 +140,24 @@ export default function QRBookScanner() {
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow">
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">QR Book Scanner</h2>
-
-                {/* Connection Status */}
-                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                    <p className="text-sm text-yellow-800">
-                        <strong>Note:</strong> Make sure backend server is running on http://localhost:5000
-                    </p>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800">QR Book Scanner</h2>
                 </div>
 
                 {/* Student Selection */}
                 <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Select Student *
+                        Select Student:
                     </label>
                     <select
                         value={studentId}
                         onChange={(e) => setStudentId(e.target.value)}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
                     >
                         <option value="">Select a student</option>
-                        {students.map((student) => (
-                            <option key={student._id} value={student._id}>
-                                {student.name} ({student.rollNo})
+                        {students.map((s) => (
+                            <option key={s._id} value={s._id}>
+                                {s.name} — {s.rollNo}
                             </option>
                         ))}
                     </select>
@@ -187,7 +182,7 @@ export default function QRBookScanner() {
                     </div>
                     <button
                         type="submit"
-                        disabled={loading || !scannedBookId.trim()}
+                        disabled={loading || !scannedBookId.trim() || !studentId}
                         className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
                     >
                         {loading ? "Loading Book Details..." : "Scan Book"}
@@ -256,18 +251,6 @@ export default function QRBookScanner() {
                                 <strong>Book ID:</strong> <code className="bg-gray-100 px-1 rounded text-xs">{bookDetails._id}</code>
                             </div>
                         </div>
-
-                        {/* QR Code Display */}
-                        {bookDetails.qrData && (
-                            <div className="text-center mb-4">
-                                <img
-                                    src={bookDetails.qrData}
-                                    alt="QR Code"
-                                    className="w-32 h-32 mx-auto mb-2"
-                                />
-                                <p className="text-sm text-gray-600">Book QR Code</p>
-                            </div>
-                        )}
 
                         {/* Action Buttons */}
                         <div className="flex flex-col space-y-3">

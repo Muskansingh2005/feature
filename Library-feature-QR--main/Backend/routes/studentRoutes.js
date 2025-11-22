@@ -1,3 +1,4 @@
+// [file name]: studentRoutes.js - UPDATED
 import express from "express";
 import Student from "../models/Student.js";
 

@@ -1,4 +1,4 @@
-// [file name]: routes/index.js - UPDATED
+// [file name]: routes/index.js - UPDATED (NO AUTH)
 import express from "express";
 import bookRoutes from "./bookRoutes.js";
 import studentRoutes from "./studentRoutes.js";

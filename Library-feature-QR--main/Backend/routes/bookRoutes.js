@@ -1,7 +1,7 @@
 // [file name]: bookRoutes.js - UPDATED
 import express from "express";
 import Book from "../models/Book.js";
-import { addBook, getBookById } from "../controllers/bookController.js"; // Import the function
+import { addBook, getBookById } from "../controllers/bookController.js";
 
 const router = express.Router();
 
@@ -15,7 +15,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ Get book by ID - ADD THIS ROUTE
+// ✅ Get book by ID
 router.get("/:id", getBookById);
 
 // ✅ Add new book (with validation and QR code generation)

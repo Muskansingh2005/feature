@@ -1,9 +1,8 @@
-// [file name]: transactionController.js - UPDATED (FIXED QUANTITY ISSUE)
+// [file name]: transactionController.js - UPDATED (WITH FINE SYSTEM)
 /**
- * Transaction Controller (No Authentication)
+ * Transaction Controller with Fine System
  * ------------------------------------------
- * Handles book issue and return operations without authentication.
- * FIXED: Multiple copies issue/return logic
+ * Handles book issue and return operations with fines for overdue books.
  */
 
 import Transaction from "../models/Transaction.js";
@@ -49,11 +48,11 @@ const issueBook = async (req, res, next) => {
       return res.status(404).json({ message: "Book not found" });
     }
 
-    // FIXED: Check if this specific student already has this book issued and not returned
+    // Check if this specific student already has this book issued and not returned
     const studentActiveIssue = await Transaction.findOne({
       studentId,
       bookId,
-      status: "active",
+      status: { $in: ["active", "overdue"] },
     });
 
     if (studentActiveIssue) {
@@ -62,7 +61,7 @@ const issueBook = async (req, res, next) => {
       });
     }
 
-    // FIXED: Check if any copies are available (not if ALL copies are issued)
+    // Check if any copies are available
     if (book.availableCopies <= 0) {
       return res.status(400).json({
         message: "No copies available to issue",
@@ -99,7 +98,7 @@ const issueBook = async (req, res, next) => {
       message: "Book issued successfully",
       transaction,
       dueDate: dueDate.toISOString().split("T")[0],
-      availableCopies: book.availableCopies - 1, // Return updated count
+      availableCopies: book.availableCopies - 1,
     });
   } catch (error) {
     console.error("Issue book error:", error);
@@ -108,7 +107,7 @@ const issueBook = async (req, res, next) => {
 };
 
 /**
- * @desc Return a book
+ * @desc Return a book with fine calculation
  * @route POST /api/transactions/return
  * @access Public
  */
@@ -143,11 +142,11 @@ const returnBook = async (req, res, next) => {
       });
     }
 
-    // FIXED: Check if this specific student has this book issued and not returned
+    // Check if this specific student has this book issued and not returned
     const activeIssue = await Transaction.findOne({
       studentId,
       bookId,
-      status: "active",
+      status: { $in: ["active", "overdue"] },
     });
 
     if (!activeIssue) {
@@ -156,14 +155,29 @@ const returnBook = async (req, res, next) => {
       });
     }
 
+    // Calculate fine if overdue
+    const returnDate = new Date();
+    const dueDate = new Date(activeIssue.dueDate);
+    let fineAmount = 0;
+    let daysOverdue = 0;
+
+    if (returnDate > dueDate) {
+      const timeDiff = returnDate.getTime() - dueDate.getTime();
+      daysOverdue = Math.ceil(timeDiff / (1000 * 3600 * 24));
+      fineAmount = daysOverdue * 5; // ₹5 per day
+    }
+
     // Create return transaction and update book
     const [returnTransaction] = await Promise.all([
       new Transaction({
         studentId,
         bookId,
         type: "return",
-        returnDate: new Date(),
+        returnDate: returnDate,
         status: "returned",
+        fineAmount: fineAmount,
+        daysOverdue: daysOverdue,
+        finePaid: fineAmount === 0, // Auto-mark as paid if no fine
       }).save(),
       Book.findByIdAndUpdate(
         bookId,
@@ -172,21 +186,32 @@ const returnBook = async (req, res, next) => {
         },
         { new: true }
       ),
-      // Update the original issue transaction status
+      // Update the original issue transaction status to returned
       Transaction.findByIdAndUpdate(activeIssue._id, {
         status: "returned",
-        returnDate: new Date(),
+        returnDate: returnDate,
       }),
     ]);
 
     await returnTransaction.populate("studentId", "name rollNo email");
     await returnTransaction.populate("bookId", "title author isbn");
 
-    res.status(201).json({
+    const response = {
       message: "Book returned successfully",
       transaction: returnTransaction,
-      availableCopies: book.availableCopies + 1, // Return updated count
-    });
+      availableCopies: book.availableCopies + 1,
+    };
+
+    // Add fine information if applicable
+    if (fineAmount > 0) {
+      response.fineInfo = {
+        daysOverdue: daysOverdue,
+        fineAmount: fineAmount,
+        message: `Fine of ₹${fineAmount} applied for ${daysOverdue} day(s) overdue`,
+      };
+    }
+
+    res.status(201).json(response);
   } catch (error) {
     console.error("Return book error:", error);
     next(error);
@@ -194,13 +219,21 @@ const returnBook = async (req, res, next) => {
 };
 
 /**
- * @desc Get all transactions
+ * @desc Get all transactions (exclude returned books from active view)
  * @route GET /api/transactions
  * @access Public
  */
 const getTransactions = async (req, res, next) => {
   try {
-    const { page = 1, limit = 50, studentId, bookId, type, status } = req.query;
+    const {
+      page = 1,
+      limit = 50,
+      studentId,
+      bookId,
+      type,
+      status,
+      showReturned = false,
+    } = req.query;
 
     const filter = {};
 
@@ -209,6 +242,11 @@ const getTransactions = async (req, res, next) => {
     if (bookId) filter.bookId = bookId;
     if (type) filter.type = type;
     if (status) filter.status = status;
+
+    // By default, don't show returned transactions unless explicitly requested
+    if (!showReturned && !status) {
+      filter.status = { $in: ["active", "overdue"] };
+    }
 
     const transactions = await Transaction.find(filter)
       .populate("studentId", "name rollNo email")
@@ -232,7 +270,7 @@ const getTransactions = async (req, res, next) => {
 };
 
 /**
- * @desc Get active issues for a student
+ * @desc Get active issues for a student (exclude returned books)
  * @route GET /api/transactions/active/:studentId
  * @access Public
  */
@@ -246,7 +284,7 @@ const getActiveIssues = async (req, res, next) => {
 
     const activeIssues = await Transaction.find({
       studentId,
-      status: "active",
+      status: { $in: ["active", "overdue"] },
       type: "issue",
     })
       .populate("bookId", "title author isbn coverImage")
@@ -263,7 +301,7 @@ const getActiveIssues = async (req, res, next) => {
 };
 
 /**
- * @desc Get student's transaction history
+ * @desc Get student's transaction history (include all including returned)
  * @route GET /api/transactions/student/:studentId
  * @access Public
  */
@@ -310,7 +348,7 @@ const getBookAvailability = async (req, res, next) => {
     // Get all active issues for this book
     const activeIssues = await Transaction.find({
       bookId,
-      status: "active",
+      status: { $in: ["active", "overdue"] },
     }).populate("studentId", "name rollNo email");
 
     res.json({
@@ -337,6 +375,88 @@ const getBookAvailability = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc Get overdue books with fines
+ * @route GET /api/transactions/overdue
+ * @access Public
+ */
+const getOverdueBooks = async (req, res, next) => {
+  try {
+    const overdueBooks = await Transaction.find({
+      status: "overdue",
+      type: "issue",
+    })
+      .populate("studentId", "name rollNo email")
+      .populate("bookId", "title author isbn")
+      .sort({ dueDate: 1 });
+
+    // Calculate current fines for overdue books
+    const overdueWithCurrentFines = overdueBooks.map((transaction) => {
+      const dueDate = new Date(transaction.dueDate);
+      const today = new Date();
+      const timeDiff = today.getTime() - dueDate.getTime();
+      const daysOverdue = Math.ceil(timeDiff / (1000 * 3600 * 24));
+      const currentFine = daysOverdue * 5;
+
+      return {
+        ...transaction.toObject(),
+        currentDaysOverdue: daysOverdue,
+        currentFine: currentFine,
+      };
+    });
+
+    res.json({
+      overdueBooks: overdueWithCurrentFines,
+      totalOverdue: overdueWithCurrentFines.length,
+      totalFine: overdueWithCurrentFines.reduce(
+        (sum, book) => sum + book.currentFine,
+        0
+      ),
+    });
+  } catch (error) {
+    console.error("Get overdue books error:", error);
+    next(error);
+  }
+};
+
+/**
+ * @desc Pay fine for a transaction
+ * @route POST /api/transactions/pay-fine
+ * @access Public
+ */
+const payFine = async (req, res, next) => {
+  try {
+    const { transactionId } = req.body;
+
+    if (!transactionId) {
+      return res.status(400).json({ message: "transactionId is required" });
+    }
+
+    const transaction = await Transaction.findByIdAndUpdate(
+      transactionId,
+      {
+        finePaid: true,
+        status: "returned",
+      },
+      { new: true }
+    )
+      .populate("studentId", "name rollNo email")
+      .populate("bookId", "title author isbn");
+
+    if (!transaction) {
+      return res.status(404).json({ message: "Transaction not found" });
+    }
+
+    res.json({
+      message: `Fine of ₹${transaction.fineAmount} paid successfully`,
+      transaction,
+    });
+  } catch (error) {
+    console.error("Pay fine error:", error);
+    next(error);
+  }
+};
+
 // Export all functions
 export {
   issueBook,
@@ -345,4 +465,6 @@ export {
   getActiveIssues,
   getStudentTransactions,
   getBookAvailability,
+  getOverdueBooks,
+  payFine,
 };
